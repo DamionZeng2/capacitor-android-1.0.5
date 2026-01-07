@@ -98,10 +98,16 @@ jobs:
             npx @capacitor/assets generate --android
           fi
       - run: npx cap sync android
+      - name: Upgrade Gradle wrapper to 8.4
+        run: |
+          cd android
+          ./gradlew wrapper --no-daemon --gradle-version 8.4
       - name: Inject Native Code
         run: node scripts/inject_native.cjs
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
       - name: Decode keystore
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
