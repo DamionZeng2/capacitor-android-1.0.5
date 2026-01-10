@@ -91,6 +91,11 @@ jobs:
       - name: Build web
         run: npm run build
       - run: npx cap add android
+      - name: Patch Gradle wrapper
+        run: |
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i -E 's#distributionUrl=.*gradle-[0-9.]+-(all|bin)\.zip#distributionUrl=https\://services.gradle.org/distributions/gradle-8.4.2-bin.zip#' android/gradle/wrapper/gradle-wrapper.properties
+          fi
       - name: Generate Capacitor assets
         run: |
           if [ -f resources/icon.png ] || [ -f resources/logo.png ] || [ -f assets/icon.png ] || [ -f assets/logo.png ] || [ -f assets/icon-only.png ] || [ -f assets/icon-foreground.png ] || [ -f assets/icon-background.png ]; then
