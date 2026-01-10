@@ -91,6 +91,41 @@ jobs:
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
             sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.12.1-bin.zip#' android/gradle/wrapper/gradle-wrapper.properties
           fi
+      - name: Patch Android build versions
+        run: |
+          AGP_VERSION="8.7.3"
+          COMPILE_SDK="35"
+          if [ -f android/gradle/libs.versions.toml ]; then
+            sed -i -E "s/(androidGradlePlugin\\s*=\\s*\")([0-9.]+)(\")/\\1${AGP_VERSION}\\3/" android/gradle/libs.versions.toml || true
+            sed -i -E "s/(agp\\s*=\\s*\")([0-9.]+)(\")/\\1${AGP_VERSION}\\3/" android/gradle/libs.versions.toml || true
+            sed -i -E "s/(compileSdk\\s*=\\s*)([0-9]+)/\\1${COMPILE_SDK}/" android/gradle/libs.versions.toml || true
+            sed -i -E "s/(targetSdk\\s*=\\s*)([0-9]+)/\\1${COMPILE_SDK}/" android/gradle/libs.versions.toml || true
+          fi
+          if [ -f android/variables.gradle ]; then
+            sed -i -E "s/(compileSdkVersion\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(targetSdkVersion\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(compileSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(targetSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
+          fi
+          for f in android/build.gradle android/build.gradle.kts android/settings.gradle android/settings.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i -E "s/(com.android.tools.build:gradle:)[0-9.]+/\\1${AGP_VERSION}/" "$f" || true
+              sed -i -E "s/(id 'com.android.application' version ')[0-9.]+(')/\\1${AGP_VERSION}\\2/" "$f" || true
+              sed -i -E "s/(id 'com.android.library' version ')[0-9.]+(')/\\1${AGP_VERSION}\\2/" "$f" || true
+              sed -i -E "s/(id\\(\"com.android.application\"\\) version \")[0-9.]+(\".*)/\\1${AGP_VERSION}\\2/" "$f" || true
+              sed -i -E "s/(id\\(\"com.android.library\"\\) version \")[0-9.]+(\".*)/\\1${AGP_VERSION}\\2/" "$f" || true
+            fi
+          done
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i -E "s/(compileSdkVersion\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+              sed -i -E "s/(compileSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+              sed -i -E "s/(compileSdk\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+              sed -i -E "s/(targetSdkVersion\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+              sed -i -E "s/(targetSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+              sed -i -E "s/(targetSdk\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
+            fi
+          done
       - name: Generate Capacitor assets
         run: |
           if [ -f resources/icon.png ] || [ -f resources/logo.png ] || [ -f assets/icon.png ] || [ -f assets/logo.png ] || [ -f assets/icon-only.png ] || [ -f assets/icon-foreground.png ] || [ -f assets/icon-background.png ]; then
