@@ -83,49 +83,41 @@ jobs:
           if [ ! -z "${{ inputs.capabilities }}" ]; then
             echo "VITE_CAP_FEATURES=${{ inputs.capabilities }}" >> $GITHUB_ENV
           fi
+      - name: Validate bundle id
+        run: |
+          BID="${{ inputs.bundle_id }}"
+          if ! echo "$BID" | grep -Eq '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'; then
+            echo "Invalid bundle_id: $BID"
+            exit 1
+          fi
       - name: Build web
         run: npm run build
       - run: npx cap add android
-      - name: Patch Gradle wrapper
+      - name: Patch Android toolchain
         run: |
+          set -e
+          AGP_VERSION="8.7.3"
+          COMPILE_SDK="35"
+          TARGET_SDK="34"
+          MIN_SDK="23"
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
             sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.12.1-bin.zip#' android/gradle/wrapper/gradle-wrapper.properties
           fi
-      - name: Patch Android build versions
-        run: |
-          AGP_VERSION="8.7.3"
-          COMPILE_SDK="35"
           if [ -f android/gradle/libs.versions.toml ]; then
             sed -i -E "s/(androidGradlePlugin\\s*=\\s*\")([0-9.]+)(\")/\\1${AGP_VERSION}\\3/" android/gradle/libs.versions.toml || true
             sed -i -E "s/(agp\\s*=\\s*\")([0-9.]+)(\")/\\1${AGP_VERSION}\\3/" android/gradle/libs.versions.toml || true
             sed -i -E "s/(compileSdk\\s*=\\s*)([0-9]+)/\\1${COMPILE_SDK}/" android/gradle/libs.versions.toml || true
-            sed -i -E "s/(targetSdk\\s*=\\s*)([0-9]+)/\\1${COMPILE_SDK}/" android/gradle/libs.versions.toml || true
+            sed -i -E "s/(targetSdk\\s*=\\s*)([0-9]+)/\\1${TARGET_SDK}/" android/gradle/libs.versions.toml || true
+            sed -i -E "s/(minSdk\\s*=\\s*)([0-9]+)/\\1${MIN_SDK}/" android/gradle/libs.versions.toml || true
           fi
           if [ -f android/variables.gradle ]; then
             sed -i -E "s/(compileSdkVersion\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
-            sed -i -E "s/(targetSdkVersion\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
             sed -i -E "s/(compileSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
-            sed -i -E "s/(targetSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(targetSdkVersion\\s*=\\s*)[0-9]+/\\1${TARGET_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(targetSdk\\s*=\\s*)[0-9]+/\\1${TARGET_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(minSdkVersion\\s*=\\s*)[0-9]+/\\1${MIN_SDK}/" android/variables.gradle || true
+            sed -i -E "s/(minSdk\\s*=\\s*)[0-9]+/\\1${MIN_SDK}/" android/variables.gradle || true
           fi
-          for f in android/build.gradle android/build.gradle.kts android/settings.gradle android/settings.gradle.kts; do
-            if [ -f "$f" ]; then
-              sed -i -E "s/(com.android.tools.build:gradle:)[0-9.]+/\\1${AGP_VERSION}/" "$f" || true
-              sed -i -E "s/(id 'com.android.application' version ')[0-9.]+(')/\\1${AGP_VERSION}\\2/" "$f" || true
-              sed -i -E "s/(id 'com.android.library' version ')[0-9.]+(')/\\1${AGP_VERSION}\\2/" "$f" || true
-              sed -i -E "s/(id\\(\"com.android.application\"\\) version \")[0-9.]+(\".*)/\\1${AGP_VERSION}\\2/" "$f" || true
-              sed -i -E "s/(id\\(\"com.android.library\"\\) version \")[0-9.]+(\".*)/\\1${AGP_VERSION}\\2/" "$f" || true
-            fi
-          done
-          for f in android/app/build.gradle android/app/build.gradle.kts; do
-            if [ -f "$f" ]; then
-              sed -i -E "s/(compileSdkVersion\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-              sed -i -E "s/(compileSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-              sed -i -E "s/(compileSdk\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-              sed -i -E "s/(targetSdkVersion\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-              sed -i -E "s/(targetSdk\\s*=\\s*)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-              sed -i -E "s/(targetSdk\\s+)[0-9]+/\\1${COMPILE_SDK}/" "$f" || true
-            fi
-          done
       - name: Generate Capacitor assets
         run: |
           if [ -f resources/icon.png ] || [ -f resources/logo.png ] || [ -f assets/icon.png ] || [ -f assets/logo.png ] || [ -f assets/icon-only.png ] || [ -f assets/icon-foreground.png ] || [ -f assets/icon-background.png ]; then
@@ -133,9 +125,24 @@ jobs:
           fi
       - run: npx cap sync android
       - name: Inject Native Code
+        if: ${{ inputs.capabilities != '' }}
         run: node scripts/inject_native.cjs
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
+      - name: Install Android SDK packages
+        run: |
+          set -e
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -n "$SDK_ROOT" ] && [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="sdkmanager"
+          fi
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
       - name: Decode keystore
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
@@ -156,7 +163,7 @@ jobs:
       - name: Build APK
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
-          cd android && ./gradlew --no-daemon --stacktrace assembleRelease
+          cd android && ./gradlew --no-daemon --info --stacktrace --warning-mode all assembleRelease
       - name: Upload APK
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         uses: actions/upload-artifact@v4
@@ -182,7 +189,30 @@ jobs:
       - name: Build Debug APK (no signing)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 == '' }}
         run: |
-          cd android && ./gradlew --no-daemon --stacktrace assembleDebug
+          cd android && ./gradlew --no-daemon --info --stacktrace --warning-mode all assembleDebug
+      - name: Dump manifest merge outputs
+        if: ${{ failure() }}
+        run: |
+          set -e
+          if [ -d android/app/build ]; then
+            echo "== manifest merger reports =="
+            find android/app/build -type f \( -iname "*manifest*merger*report*.txt" -o -iname "*manifest*merger*report*.html" -o -iname "*manifest_merge_blame*" -o -iname "*manifest-merger*" \) -print | head -n 50 || true
+            for f in $(find android/app/build -type f \( -iname "*manifest*merger*report*.txt" -o -iname "*manifest_merge_blame*" -o -iname "*manifest-merger*" \) | head -n 10); do
+              echo "== $f =="
+              sed -n '1,220p' "$f" || true
+            done
+          fi
+      - name: Upload Android build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-logs
+          path: |
+            android/app/build/outputs/logs/**
+            android/app/build/reports/**
+            android/build/reports/**
+            android/app/build/intermediates/manifest_merge_blame_file/**
+            android/app/build/intermediates/merged_manifest/**
       - name: Upload Debug APK
         if: ${{ env.ANDROID_KEYSTORE_BASE64 == '' }}
         uses: actions/upload-artifact@v4
